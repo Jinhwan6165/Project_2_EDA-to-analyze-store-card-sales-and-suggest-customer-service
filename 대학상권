@@ -1,0 +1,574 @@
+sales<-read.csv("추정매출_M.csv")
+store_state19<-read.csv("서울시_우리마을가게_상권분석서비스(상권-점포)_2019.csv")
+store_state20<-read.csv("서울시_우리마을가게_상권분석서비스(상권-점포)_2020.csv")
+float_pop<-read.csv("서울시 우리마을가게 상권분석서비스(상권-추정유동인구).csv")
+area_code<-read.csv("서울시 우리마을가게 상권분석서비스(상권영역_상권코드).csv")
+sigungu<-read.csv("sigungu.csv")
+covid_19<-read.csv("서울시 코로나19 확진자 현황.csv")
+sales2020<-read.csv("서울시 우리마을가게 상권분석서비스(상권-추정매출)_2020.csv")
+facility<-read.csv("서울시 우리마을가게 상권분석서비스(상권-집객시설).csv")
+resis<-read.csv("서울시 우리마을가게 상권분석서비스(상권_상주인구).csv")
+worker<-read.csv("서울시 우리마을가게 상권분석서비스(상권-직장인구).csv")
+change<-read.csv("서울시 우리마을가게 상권분석서비스(상권-상권변화지표).csv")
+##covid_19<-read.csv("서울시 코로나19 확진자 현황.csv")
+##covid_19<-read.csv("서울시 코로나19 확진자 현황.csv")
+##covid_19<-read.csv("서울시 코로나19 확진자 현황.csv")
+
+
+
+
+
+#install.packages("DataExplorer")
+#install.packages('lubridate')
+#install.packages("changepoint")
+library(DataExplorer)
+library(openxlsx)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+library(stringr)
+library(zoo)
+library(reshape2)
+library(changepoint)
+
+
+# 동작구 상권_ 행정동 코드 및 상권코드 추출
+dj_seoul<-filter(sigungu,시군구명=="동작구")
+
+seoul_dj<-unite(dj_seoul,col="행정동_코드",시군구코드,행정동코드,sep="")
+
+sido<-filter(sigungu,시도명=="서울특별시")
+
+#### 업종 비교
+
+
+#### 년도별 매출 비교
+data_serv<-sales %>%
+  filter(기준_년_코드 >= 2019, 상권_구분_코드_명 == '골목상권',
+                상권_코드_명 %in% c('사당로2차길','사당로23길','사당로8길','사당로23나길','사당로29길',
+                               '흑석로9길','흑석로13길','서달로15길','서달로14길','서달로8가길','서달로10길',
+                               '상도로61길','상도로62길','상도로37길','상도로47길'),
+                서비스_업종_코드%in% c("CS100001","CS100002",
+                                "CS100003","CS100004",
+                                "CS100005","CS100006",
+                                "CS100007","CS100008",
+                                "CS100009","CS100010")) %>%
+  select(-상권_구분_코드,-상권_구분_코드_명) %>%
+  arrange(기준_년_코드, 기준_분기_코드)
+
+data_serv %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="동작구 매출 추이19-20")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_serv %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_건수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="동작구 매출 추이19-20")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+#### 년도별 선별 상권 전체 매출 비교######
+
+data_serv %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출 추세현황-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+  
+######### 상권별 매출 비교  ###############
+######### 연령별 매출 비교, 업종별 매출 비교, 외식업 내 매출 비교 #######
+
+####################################
+### 상도1동 - 숭실대
+
+data_ss<-sales %>%
+  filter(기준_년_코드 >= 2019, 상권_구분_코드_명 == '골목상권',
+                상권_코드_명 %in% c('상도로61길','상도로62길','상도로37길','상도로47길'),
+                서비스_업종_코드%in% c("CS100001","CS100002",
+                                "CS100003","CS100004",
+                                "CS100005","CS100006",
+                                "CS100007","CS100008",
+                                "CS100009","CS100010")) %>%
+  select(-상권_구분_코드,-상권_구분_코드_명) %>%
+  arrange(기준_년_코드, 기준_분기_코드)
+
+
+data_ss %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출 추세현황-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+##분기별 매출건수
+data_ss %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_건수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 건수",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출건수 추세현황-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+##서비스업종별 매출 분석
+data_ss %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=서비스_업종_코드_명, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = "외식업 종별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+######점포수 변화 추이
+data_ss %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = " 점포수",labels = scales::comma) +
+  scale_x_discrete(name="상권점포수 추이-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_ss %>%
+  group_by(기준_년_코드=2019, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = " 점포수",labels = scales::comma) +
+  scale_x_discrete(name="상권점포수 추이-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+######서비스 업종별 점포수
+sales_ %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_년_코드, y=sum, fill = 기준_년_코드)) +
+  scale_y_continuous(name = "외식업 종별 점포수",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류 점포수 추이 -상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+####### 연령별
+sales_dj %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(연령대_30_매출_금액)) %>%
+  ggplot(aes(x=기준_년_코드, y=sum, fill = 기준_년_코드)) +
+  scale_y_continuous(name = "연령별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="30대 서비스 업종별 매출")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+### 흑석동 - 중앙대
+
+data_cau<-sales %>%
+  filter(기준_년_코드 >= 2019, 상권_구분_코드_명 == '골목상권',
+                상권_코드_명 %in% c('흑석로9길','흑석로13길','서달로15길','서달로14길','서달로8가길','서달로10길'),
+                서비스_업종_코드%in% c("CS100001","CS100002",
+                                "CS100003","CS100004",
+                                "CS100005","CS100006",
+                                "CS100007","CS100008",
+                                "CS100009","CS100010")) %>%
+  select(-상권_구분_코드,-상권_구분_코드_명) %>%
+  arrange(기준_년_코드, 기준_분기_코드)
+
+data_cau %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출 추세현황-흑석동(고려대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_cau %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=서비스_업종_코드_명, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = "외식업 종별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류-흑석동(중앙대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_cau %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_건수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 건수",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출건수 추세현황-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_cau %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(당월_매출_건수)) %>%
+  ggplot(aes(x=서비스_업종_코드_명, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = "외식업 종별 매출건수",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류별 건수-흑석동(중앙대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+######서비스 업종별 점포수
+data_cau %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_년_코드, y=sum, fill = 기준_년_코드)) +
+  scale_y_continuous(name = "외식업 종별 점포수",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류 점포수 추이 -흑석동(중앙대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_cau %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(연령대_20_매출_금액)) %>%
+  ggplot(aes(x=기준_년_코드, y=sum, fill = 기준_년년_코드)) +
+  scale_y_continuous(name = "연령별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="연령령별 매출 추세현황-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_cau %>%
+  group_by(기준_년_코드=2019, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = " 점포수",labels = scales::comma) +
+  scale_x_discrete(name="상권점포수 추이-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_cau %>%
+  group_by(기준_년_코드=2020, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = " 점포수",labels = scales::comma) +
+  scale_x_discrete(name="상권점포수 추이-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+### 사당3동 - 총신대
+
+data_csu<-sales %>%
+  filter(기준_년_코드 >= 2019, 상권_구분_코드_명 == '골목상권',
+                상권_코드_명 %in% c('사당로23길','사당로23나길','사당로29길'),
+                서비스_업종_코드%in% c("CS100001","CS100002",
+                                "CS100003","CS100004",
+                                "CS100005","CS100006",
+                                "CS100007","CS100008",
+                                "CS100009","CS100010")) %>%
+  select(-상권_구분_코드,-상권_구분_코드_명) %>%
+  arrange(기준_년_코드, 기준_분기_코드)
+
+data_csu %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출 추세현황-사당3동(총신대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+###서비스업종 별 매출 
+data_csu %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(당월_매출_금액)) %>%
+  ggplot(aes(x=서비스_업종_코드_명, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = "외식업 종별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류-사당3동(총신대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+###매출건수
+data_csu %>%
+  group_by(기준_년_코드, 기준_분기_코드) %>%
+  summarise(sum = sum(당월_매출_건수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 매출 건수",labels = scales::comma) +
+  scale_x_discrete(name="년도별 매출건수 추세현황-사당3동(총신대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_csu %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(당월_매출_건수)) %>%
+  ggplot(aes(x=서비스_업종_코드_명, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = "외식업 종별 매출건수",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류-사당3동(총신대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+######서비스 업종별 점포수
+data_csu %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_년_코드, y=sum, fill = 기준_년_코드)) +
+  scale_y_continuous(name = "외식업 종별 점포수",labels = scales::comma) +
+  scale_x_discrete(name="외식업 종류 점포수 추이 -사당3동(총신대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_csu %>%
+  group_by(기준_년_코드=2019, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = " 점포수",labels = scales::comma) +
+  scale_x_discrete(name="상권점포수 추이-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+data_csu %>%
+  group_by(기준_년_코드=2020, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(점포수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 서비스_업종_코드_명)) +
+  scale_y_continuous(name = " 점포수",labels = scales::comma) +
+  scale_x_discrete(name="상권점포수 추이-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+#### 연령별 매출
+
+data_csu %>%
+  group_by(기준_년_코드, 기준_분기_코드,서비스_업종_코드_명) %>%
+  summarise(sum = sum(연령대_30_매출_금액)) %>%
+  ggplot(aes(x=기준_년_코드, y=sum, fill = 기준_년_코드)) +
+  scale_y_continuous(name = "연령별 매출 합산금액",labels = scales::comma) +
+  scale_x_discrete(name="연령령별 매출 추세현황-상도1동(숭실대)")+
+  geom_bar(stat = "identity") +
+  facet_grid(~서비스_업종_코드_명)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+############## 유동인구 ################
+########################################
+str(float_pop)
+
+float_cert<-float_pop%>%
+  filter(기준.년코드>=2019,X.상권_구분_코드_명 == '골목상권')
+
+float_cert%>%
+  group_by(기준.년코드, 기준_분기_코드)%>%
+  summarise(sum=sum(총_유동인구_수))%>%
+  ggplot(aes(x=))
+
+float_djg<-float_cert%>%
+  filter(기준.년코드>=2019, X.상권_구분_코드_명 == '골목상권',
+           상권_코드_명 %in% c('노량진중앙시장','만양로14길','만양로8길','본동인정시장','서울 동작구 노량진1동_1',
+                          '서울 동작구 노량진역','노량진로6길','신노량진시장','장승배기로19길','장승배기로27길',
+                          '대방동27길','대방동2길','등용로14길','여의대방로24길','여의대방로46길','관악구 사당역_2',
+                          '동작대로17길','동작대로7길','사당로20길','사당로26길','사당로30길','남성사계시장','동작구 총신대입구역_1',
+                          '동작대로29길','동작대로33길','동작대로35길','사당로23길','사당로23나길','사당로29길','남성역골목시장',
+                          '사당로16가길','사당로16길','사당시장','사당로2차길','사당로8길','강남시장_동작','상도로37길','상도로47길',
+                          '상도로61길','상도로62길','상도전통시장','상도로15길','영도시장','장승배기로10길','국사봉1길','국사봉길',
+                          '성대시장','신대방삼거리역','상도4동도깨비골목시장','성대로1길','성대로29길','양녕로26길','신대방길','국사봉2길',
+                          '보라매공원','여의대방로22길','여의대방로22나길','여의대방로22카길','서달로10길','서달로14길','서달로15길',
+                          '서달로8가길','흑석로13길','흑석로9길','흑석시장'))
+
+float_djc<-float_cert%>%
+  filter(기준.년코드>=2019, X.상권_구분_코드_명 == '골목상권',
+           상권_코드_명 %in% c('사당로2차길','사당로23길','사당로8길','사당로23나길','사당로29길',
+                          '흑석로9길','흑석로13길','서달로15길','서달로14길','서달로8가길','서달로10길',
+                          '상도로61길','상도로62길','상도로37길','상도로47길'))
+count(float_djc)
+count(data_serv)
+
+float_djj %>%
+  group_by(기준.년코드, 기준_분기_코드) %>%
+  summarise(sum = sum(총_유동인구_수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = " 유동인구",labels = scales::comma) +
+  scale_x_discrete(name="분기별 유동인구")+
+  geom_line(stat = "identity") +
+  facet_grid(~기준.년코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+float_dj<-float_pop%>%
+  filter(기준.년코드>=2019, X.상권_구분_코드_명 == '골목상권',
+           상권_코드_명 %in% c('사당로2차길','사당로23길','사당로8길','사당로23나길','사당로29길',
+                          '흑석로9길','흑석로13길','서달로15길','서달로14길','서달로8가길','서달로10길',
+                          '상도로61길','상도로62길','상도로37길','상도로47길'))
+str(float_dj)
+float_dj %>%
+  group_by(기준.년코드, 기준_분기_코드) %>%
+  summarise(sum = sum(총_유동인구_수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 유동인구",labels = scales::comma) +
+  scale_x_discrete(name=" 유동인구")+
+  geom_line(stat = "identity") +
+  facet_grid(~기준.년코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+#### 연령별
+float_dj %>%
+  group_by(기준.년코드, 기준_분기_코드) %>%
+  summarise(sum = sum(연령대_0_유동인구_수)) %>%
+  ggplot(aes(x=기준_분기_코드, y=sum, fill = 기준_분기_코드)) +
+  scale_y_continuous(name = "분기별 유동인구",labels = scales::comma) +
+  scale_x_discrete(name="년도별 유동인구")+
+  geom_line(stat = "identity") +
+  facet_grid(~기준.년코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+
+#########유동인구 $ 매출
+
+sales_dj<-sales%>%
+  filter(상권_구분_코드_명=='골목상권',
+                   상권_코드_명%in% c('사당로2차길','사당로23길','사당로8길','사당로23나길','사당로29길',
+                                 '흑석로9길','흑석로13길','서달로15길','서달로14길','서달로8가길','서달로10길',
+                                 '상도로61길','상도로62길','상도로37길','상도로47길'))
+
+sales_dj%>%
+  group_by(기준_년_코드=2020, 기준_분기_코드,서비스_업종_코드_명)%>%
+  summarise(sum=sum(점포수))%>%
+  ggplot(aes(x=서비스_업종_코드_명,y=sum,fill=서비스_업종_코드_명))+
+  scale_y_continuous(name = "업종별 변화",labels = scales::comma) +
+  scale_x_discrete(name="상권전체 업종별 변화")+
+  geom_line(stat = "identity") +
+  facet_grid(~기준_년_코드)+
+  theme_bw()+
+  theme(legend.position = "none")
+
+
+
+
+  ########### 코로나와 유동인구 ############
+
+str(covid_19)
+
+as.date(covid_19$확진일)
+covid_19$확진일<-ymd(covid_19$확진일)
+
+covid_19<-covid_19%>%
+  mutate(확진일, 월=month(확진일))
+
+covid_19<-covid_19%>%
+ mutate(월, 분기=ifelse(월%in%c(1,2,3),1,ifelse(월%in%c(4,5,6),2,ifelse(월%in%c(7,8,9),3,4))))
+
+#is.factor(covid_19$분기)
+
+as.factor(covid_19$분기)
+as.integer(covid_19$분기)
+#str(covid_19)
+
+covid_19%>%
+  filter(지역=='동작구',분기%in%c("1","2","3"))%>%
+  count(분기)%>%
+  arrange(분기)%>%
+  ggplot(aes(x=분기,y=n))+geom_line()
+
+str(covid_19)
+
+covid_19%>%
+  group_by(월)%>%
+  summarise(count=count(연번))%>%
+  ggplot(aes(x=월,y=count,fill=월))+
+  scale_x_discrete(name=' 코로나 확진일')+
+  scale_y_continuous(name='코로나 확진자 수',labels=scales::comma)+
+  geom_line(stat = "identity")+
+  facet_grid(~지역)
+
+
+
+
+
+#### 상주인구와 집객시설 => 동작구 설명
+#1. 코로나 감염자 수 많은 곳(12.23일기준)
+
+facility%>%
+  filter(기준_년_코드>=2019, 상권_구분_코드_명=='골목상권')
+
+fc<-facility
+
+facility<-fc
+facility
+str(facility)
+
+facility<-facility%>%
+  mutate(총_집객시설수=집객시설_수+관공서_수+은행_수+종합병원_수+일반_병원_수+약국_수+유치원_수+초등학교_수+중학교_수+
+                  고등학교_수+대학교_수+백화점_수+슈퍼마켓_수+극장_수+숙박_시설_수+
+                  공항_수+철도_역_수+버스_터미널_수+지하철_역_수+버스_정거장_수)
+is.na(facility)
+facility[is.na(facility)]<-0
+
