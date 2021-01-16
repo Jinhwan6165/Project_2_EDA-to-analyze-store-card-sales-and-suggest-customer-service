@@ -303,7 +303,6 @@ data_cau %>%
   theme(legend.position = "none")
 
 
-
 ### 사당3동 - 총신대
 
 data_csu<-sales %>%
@@ -317,6 +316,7 @@ data_csu<-sales %>%
   select(-상권_구분_코드,-상권_구분_코드_명) %>%
   arrange(기준_년_코드, 기준_분기_코드)
 
+# 년도별 매출금액
 data_csu %>%
   group_by(기준_년_코드, 기준_분기_코드) %>%
   summarise(sum = sum(당월_매출_금액)) %>%
