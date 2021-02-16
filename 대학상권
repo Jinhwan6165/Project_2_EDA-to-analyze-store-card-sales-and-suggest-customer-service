@@ -198,7 +198,6 @@ sales_dj %>%
   theme(legend.position = "none")
 
 
-
 ### 흑석동 - 중앙대
 
 data_cau<-sales %>%
